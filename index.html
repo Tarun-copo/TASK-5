@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD API Integration</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">CRUD API Integration Demo</h1>
+
+        <!-- Add/Edit Item Form -->
+        <div class="mb-8 p-6 bg-blue-50 rounded-lg shadow-inner">
+            <h2 id="formTitle" class="text-2xl font-semibold text-blue-700 mb-4">Add New Item</h2>
+            <form id="itemForm" class="space-y-4">
+                <input type="hidden" id="itemId"> <!-- Hidden field for item ID during edit -->
+                <div>
+                    <label for="itemName" class="block text-sm font-medium text-gray-700">Item Name</label>
+                    <input type="text" id="itemName" name="itemName" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="itemDescription" class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea id="itemDescription" name="itemDescription" rows="3" required
+                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                </div>
+                <button type="submit" id="submitButton"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-md transition duration-300 ease-in-out">
+                    Add Item
+                </button>
+                <button type="button" id="cancelEditButton"
+                        class="w-full bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md shadow-md transition duration-300 ease-in-out hidden">
+                    Cancel Edit
+                </button>
+            </form>
+        </div>
+
+        <!-- Items Display Section -->
+        <div>
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Current Items</h2>
+            <div id="itemsContainer" class="space-y-4">
+                <!-- Items will be dynamically loaded here -->
+                <p id="loadingMessage" class="text-gray-500 text-center">Loading items...</p>
+                <p id="noItemsMessage" class="text-gray-500 text-center hidden">No items added yet.</p>
+            </div>
+        </div>
+
+        <!-- Message Box for alerts -->
+        <div id="messageBox" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                <p id="messageText" class="text-lg font-medium text-gray-800 mb-4"></p>
+                <button id="closeMessageBox"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-md transition duration-300 ease-in-out">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Simulated Backend (In-Memory API) ---
+        // This section simulates a RESTful API server. In a real application,
+        // this logic would reside on a separate backend server (e.g., Node.js, Python, Java).
+        // The frontend's `fetch` calls will interact with this simulated API.
+
+        let simulatedDatabase = []; // In-memory data store
+        let currentId = 1; // Used to assign unique IDs to new items
+
+        /**
+         * Simulates an API endpoint for /api/items.
+         * This function acts as a mock server, handling different HTTP methods.
+         * @param {Request} request - The Fetch API Request object.
+         * @returns {Promise<Response>} A Promise that resolves with a simulated Response object.
+         */
+        async function mockApiEndpoint(request) {
+            const url = new URL(request.url);
+            const path = url.pathname;
+            const method = request.method;
+
+            // Simulate network delay
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            if (path === '/api/items') {
+                if (method === 'GET') {
+                    // READ all items
+                    return new Response(JSON.stringify(simulatedDatabase), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                } else if (method === 'POST') {
+                    // CREATE a new item
+                    try {
+                        const data = await request.json();
+                        if (!data.name || !data.description) {
+                            return new Response(JSON.stringify({ error: 'Name and description are required.' }), {
+                                status: 400,
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                        }
+                        const newItem = { id: currentId++, name: data.name, description: data.description };
+                        simulatedDatabase.push(newItem);
+                        return new Response(JSON.stringify(newItem), {
+                            status: 201, // Created
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    } catch (e) {
+                        return new Response(JSON.stringify({ error: 'Invalid JSON body.' }), {
+                            status: 400,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                }
+            } else if (path.startsWith('/api/items/')) {
+                const id = parseInt(path.split('/').pop());
+                const itemIndex = simulatedDatabase.findIndex(item => item.id === id);
+
+                if (method === 'PUT') {
+                    // UPDATE an item
+                    if (itemIndex === -1) {
+                        return new Response(JSON.stringify({ error: 'Item not found.' }), {
+                            status: 404,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                    try {
+                        const data = await request.json();
+                        simulatedDatabase[itemIndex] = { ...simulatedDatabase[itemIndex], ...data, id: id }; // Ensure ID remains same
+                        return new Response(JSON.stringify(simulatedDatabase[itemIndex]), {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    } catch (e) {
+                        return new Response(JSON.stringify({ error: 'Invalid JSON body.' }), {
+                            status: 400,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                } else if (method === 'DELETE') {
+                    // DELETE an item
+                    if (itemIndex === -1) {
+                        return new Response(JSON.stringify({ error: 'Item not found.' }), {
+                            status: 404,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                    simulatedDatabase.splice(itemIndex, 1);
+                    return new Response(null, { status: 204 }); // No Content
+                } else if (method === 'GET') {
+                    // READ a single item
+                    if (itemIndex === -1) {
+                        return new Response(JSON.stringify({ error: 'Item not found.' }), {
+                            status: 404,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                    return new Response(JSON.stringify(simulatedDatabase[itemIndex]), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+            }
+
+            // Fallback for unhandled routes/methods
+            return new Response(JSON.stringify({ error: 'Not Found' }), { status: 404 });
+        }
+
+        // Override the global fetch to intercept requests and route them to our mock API
+        const originalFetch = window.fetch;
+        window.fetch = async (input, init) => {
+            const request = new Request(input, init);
+            // Only intercept requests for our simulated API base path
+            if (request.url.startsWith('/api/')) {
+                return mockApiEndpoint(request);
+            }
+            // For all other requests (e.g., CDN links), use the original fetch
+            return originalFetch(input, init);
+        };
+
+        // --- Frontend Application Logic ---
+        // This section handles the UI and makes `fetch` calls to the API.
+
+        const BASE_API_URL = '/api/items'; // Our simulated API endpoint
+
+        // Get DOM elements
+        const itemForm = document.getElementById('itemForm');
+        const itemIdInput = document.getElementById('itemId');
+        const itemNameInput = document.getElementById('itemName');
+        const itemDescriptionInput = document.getElementById('itemDescription');
+        const submitButton = document.getElementById('submitButton');
+        const cancelEditButton = document.getElementById('cancelEditButton');
+        const formTitle = document.getElementById('formTitle');
+        const itemsContainer = document.getElementById('itemsContainer');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const noItemsMessage = document.getElementById('noItemsMessage');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const closeMessageBox = document.getElementById('closeMessageBox');
+
+        /**
+         * Displays a custom message box.
+         * @param {string} message - The message to display.
+         * @param {string} type - 'success' or 'error' (not used for styling here, but good practice)
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        // Event listener for closing the message box
+        closeMessageBox.addEventListener('click', hideMessageBox);
+
+        /**
+         * Resets the item form to its initial 'Add Item' state.
+         */
+        function resetForm() {
+            itemIdInput.value = '';
+            itemNameInput.value = '';
+            itemDescriptionInput.value = '';
+            submitButton.textContent = 'Add Item';
+            submitButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+            submitButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            formTitle.textContent = 'Add New Item';
+            formTitle.classList.remove('text-green-700');
+            formTitle.classList.add('text-blue-700');
+            cancelEditButton.classList.add('hidden');
+        }
+
+        /**
+         * Fetches all items from the simulated API and renders them.
+         */
+        async function fetchAndRenderItems() {
+            loadingMessage.classList.remove('hidden');
+            noItemsMessage.classList.add('hidden');
+            itemsContainer.innerHTML = ''; // Clear existing items (except messages)
+
+            try {
+                const response = await fetch(BASE_API_URL, { method: 'GET' });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const items = await response.json();
+
+                loadingMessage.classList.add('hidden');
+
+                if (items.length === 0) {
+                    noItemsMessage.classList.remove('hidden');
+                    return;
+                } else {
+                    noItemsMessage.classList.add('hidden');
+                }
+
+                items.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.id = `item-${item.id}`;
+                    itemDiv.className = 'bg-white p-4 rounded-lg shadow-md border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 md:space-x-4';
+                    itemDiv.innerHTML = `
+                        <div class="flex-grow">
+                            <h3 class="text-xl font-semibold text-gray-800">${item.name} <span class="text-sm text-gray-500">(ID: ${item.id})</span></h3>
+                            <p class="text-gray-600 mt-1">${item.description}</p>
+                        </div>
+                        <div class="flex space-x-2 mt-3 md:mt-0">
+                            <button data-id="${item.id}"
+                                    class="edit-btn bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md shadow-sm transition duration-300 ease-in-out">
+                                Edit
+                            </button>
+                            <button data-id="${item.id}"
+                                    class="delete-btn bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md shadow-sm transition duration-300 ease-in-out">
+                                Delete
+                            </button>
+                        </div>
+                    `;
+                    itemsContainer.appendChild(itemDiv);
+                });
+
+                // Add event listeners for edit and delete buttons after rendering
+                document.querySelectorAll('.edit-btn').forEach(button => {
+                    button.addEventListener('click', handleEditClick);
+                });
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', handleDeleteClick);
+                });
+
+            } catch (error) {
+                loadingMessage.classList.add('hidden');
+                showMessageBox(`Error fetching items: ${error.message}`);
+                console.error('Error fetching items:', error);
+            }
+        }
+
+        /**
+         * Handles the form submission for adding or updating an item.
+         * @param {Event} event - The form submission event.
+         */
+        itemForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+
+            const id = itemIdInput.value;
+            const name = itemNameInput.value.trim();
+            const description = itemDescriptionInput.value.trim();
+
+            if (!name || !description) {
+                showMessageBox('Please fill in all fields.');
+                return;
+            }
+
+            const itemData = { name, description };
+
+            try {
+                let response;
+                if (id) {
+                    // Update existing item (PUT request)
+                    response = await fetch(`${BASE_API_URL}/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(itemData)
+                    });
+                    if (response.ok) {
+                        showMessageBox('Item updated successfully!');
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Failed to update item (Status: ${response.status})`);
+                    }
+                } else {
+                    // Create new item (POST request)
+                    response = await fetch(BASE_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(itemData)
+                    });
+                    if (response.ok) {
+                        showMessageBox('Item added successfully!');
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Failed to add item (Status: ${response.status})`);
+                    }
+                }
+
+                resetForm(); // Clear and reset form
+                fetchAndRenderItems(); // Re-render items after operation
+
+            } catch (error) {
+                showMessageBox(`Operation failed: ${error.message}`);
+                console.error('API operation error:', error);
+            }
+        });
+
+        /**
+         * Handles the click event for the edit button.
+         * Populates the form with item data and sets editing state.
+         * @param {Event} event - The click event.
+         */
+        async function handleEditClick(event) {
+            const id = parseInt(event.target.dataset.id);
+
+            try {
+                const response = await fetch(`${BASE_API_URL}/${id}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch item for edit (Status: ${response.status})`);
+                }
+                const item = await response.json();
+
+                itemIdInput.value = item.id;
+                itemNameInput.value = item.name;
+                itemDescriptionInput.value = item.description;
+
+                submitButton.textContent = 'Update Item';
+                submitButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                submitButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                formTitle.textContent = 'Edit Item';
+                formTitle.classList.remove('text-blue-700');
+                formTitle.classList.add('text-green-700');
+                cancelEditButton.classList.remove('hidden');
+
+                showMessageBox(`Editing item: ${item.name}`);
+
+            } catch (error) {
+                showMessageBox(`Error preparing for edit: ${error.message}`);
+                console.error('Error fetching item for edit:', error);
+            }
+        }
+
+        /**
+         * Handles the click event for the delete button.
+         * @param {Event} event - The click event.
+         */
+        async function handleDeleteClick(event) {
+            const id = parseInt(event.target.dataset.id);
+
+            // In a real application, you'd typically show a confirmation dialog here.
+            // For this demo, we'll proceed directly.
+            const confirmDelete = confirm(`Are you sure you want to delete item ID: ${id}?`);
+            if (!confirmDelete) {
+                return; // User cancelled
+            }
+
+            try {
+                const response = await fetch(`${BASE_API_URL}/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.status === 204) { // 204 No Content for successful deletion
+                    showMessageBox('Item deleted successfully!');
+                } else if (response.status === 404) {
+                    showMessageBox('Item not found for deletion.');
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to delete item (Status: ${response.status})`);
+                }
+                fetchAndRenderItems(); // Re-render items after deletion
+
+            } catch (error) {
+                showMessageBox(`Deletion failed: ${error.message}`);
+                console.error('API deletion error:', error);
+            }
+        }
+
+        // Event listener for cancelling edit mode
+        cancelEditButton.addEventListener('click', resetForm);
+
+        // Initial render when the page loads
+        document.addEventListener('DOMContentLoaded', fetchAndRenderItems);
+    </script>
+</body>
+</html>
