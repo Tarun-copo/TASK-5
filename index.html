@@ -175,14 +175,16 @@
         // Override the global fetch to intercept requests and route them to our mock API
         const originalFetch = window.fetch;
         window.fetch = async (input, init) => {
-            const request = new Request(input, init);
-            // Only intercept requests for our simulated API base path
-            if (request.url.startsWith('/api/')) {
-                return mockApiEndpoint(request);
-            }
-            // For all other requests (e.g., CDN links), use the original fetch
-            return originalFetch(input, init);
-        };
+    const request = new Request(input, init);
+    console.log('Intercepting fetch request:', request.url); // <-- ADD THIS LINE
+    // Only intercept requests that start with '/api/'
+    if (request.url.startsWith('/api/')) {
+        return mockApiEndpoint(request);
+    }
+    // For all other requests (e.g., loading Tailwind CSS from CDN),
+    // use the original, native fetch function.
+    return originalFetch(input, init);
+};
 
         // --- Frontend Application Logic ---
         // This section handles the UI and makes `fetch` calls to the API.
